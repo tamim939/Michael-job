@@ -9,8 +9,8 @@ import {
 } from 'react-router-dom';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -25,8 +25,7 @@ import {
   orderBy, 
   addDoc,
   updateDoc,
-  serverTimestamp,
-  getDocFromServer
+  serverTimestamp
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { 
@@ -45,7 +44,11 @@ import {
   DollarSign,
   Users,
   Settings as SettingsIcon,
-  CreditCard
+  CreditCard,
+  Mail,
+  Lock,
+  UserPlus,
+  LogIn
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from './utils';
@@ -114,7 +117,7 @@ const Navbar = ({ user, profile }: { user: FirebaseUser | null, profile: UserPro
               <>
                 <Link to="/dashboard" className="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Jobs</Link>
                 {profile?.role === 'admin' && (
-                  <Link to="/admin" className="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Admin</Link>
+                  <Link to="/adminpanel" className="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Admin</Link>
                 )}
                 <div className="flex items-center space-x-4 pl-4 border-l border-gray-200">
                   <div className="text-right">
@@ -161,7 +164,7 @@ const Navbar = ({ user, profile }: { user: FirebaseUser | null, profile: UserPro
                 <>
                   <Link to="/dashboard" className="block px-3 py-2 text-gray-600 font-medium">Jobs</Link>
                   {profile?.role === 'admin' && (
-                    <Link to="/admin" className="block px-3 py-2 text-gray-600 font-medium">Admin</Link>
+                    <Link to="/adminpanel" className="block px-3 py-2 text-gray-600 font-medium">Admin</Link>
                   )}
                   <button onClick={handleLogout} className="block w-full text-left px-3 py-2 text-red-500 font-medium">Logout</button>
                 </>
@@ -251,60 +254,121 @@ const LandingPage = () => {
 const AuthPage = ({ user }: { user: FirebaseUser | null }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user) navigate('/dashboard');
   }, [user, navigate]);
 
-  const handleGoogleSignIn = async () => {
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
+    setError('');
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const newUser = result.user;
 
-      // Check if profile exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          role: user.email === 'rsjonayed07@gmail.com' ? 'admin' : 'user',
+        // Create profile for new user
+        await setDoc(doc(db, 'users', newUser.uid), {
+          uid: newUser.uid,
+          email: newUser.email,
+          role: newUser.email === 'rsjonayed07@gmail.com' ? 'admin' : 'user',
           isActive: false,
           status: 'none',
           createdAt: serverTimestamp()
         });
       }
-    } catch (error) {
-      console.error("Auth error:", error);
+    } catch (err: any) {
+      console.error("Auth error:", err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('Email already in use.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password should be at least 6 characters.');
+      } else {
+        setError('Authentication failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100-64px)] flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gray-50 px-4 py-12">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white p-8 md:p-12 rounded-3xl shadow-xl max-w-md w-full text-center"
+        className="bg-white p-8 md:p-12 rounded-3xl shadow-xl max-w-md w-full"
       >
         <div className="bg-emerald-500 w-16 h-16 rounded-2xl flex items-center justify-center text-white mx-auto mb-8">
-          <ShieldCheck className="w-8 h-8" />
+          {isLogin ? <LogIn className="w-8 h-8" /> : <UserPlus className="w-8 h-8" />}
         </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-        <p className="text-gray-500 mb-8">Sign in to access your micro-job dashboard</p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2 text-center">
+          {isLogin ? 'Welcome Back' : 'Create Account'}
+        </h2>
+        <p className="text-gray-500 mb-8 text-center">
+          {isLogin ? 'Sign in to access your dashboard' : 'Join our micro-job community today'}
+        </p>
         
-        <button 
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          className="w-full flex items-center justify-center space-x-3 bg-white border-2 border-gray-100 py-4 rounded-2xl font-bold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-          <span>{loading ? 'Signing in...' : 'Continue with Google'}</span>
-        </button>
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium flex items-center">
+            <AlertCircle className="w-4 h-4 mr-2 shrink-0" />
+            {error}
+          </div>
+        )}
 
-        <p className="mt-8 text-xs text-gray-400">
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input 
+              type="email" 
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email Address"
+              className="w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-gray-100 focus:border-emerald-500 focus:outline-none transition-all"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input 
+              type="password" 
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-gray-100 focus:border-emerald-500 focus:outline-none transition-all"
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg disabled:opacity-50"
+          >
+            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Sign Up')}
+          </button>
+        </form>
+
+        <div className="mt-8 text-center">
+          <button 
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+            }}
+            className="text-emerald-600 font-bold hover:underline"
+          >
+            {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+          </button>
+        </div>
+
+        <p className="mt-8 text-xs text-gray-400 text-center">
           By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </motion.div>
@@ -412,6 +476,7 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
   const [transactionId, setTransactionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -420,6 +485,13 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  const copyToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -465,9 +537,9 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
             <div className="bg-emerald-100 w-20 h-20 rounded-full flex items-center justify-center text-emerald-600 mx-auto mb-6">
               <Clock className="w-10 h-10" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Request Submitted</h3>
-            <p className="text-gray-600 mb-8">Admin will verify your payment and activate your account within 24 hours.</p>
-            <Link to="/dashboard" className="bg-gray-900 text-white px-8 py-3 rounded-2xl font-bold">Back to Dashboard</Link>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">অনুরোধ সফল হয়েছে</h3>
+            <p className="text-gray-600 mb-8">আপনি কিছুক্ষণ অপেক্ষা করুন আপনার অ্যাকাউন্ট একটিভ হয়ে যাবে। এডমিন আপনার পেমেন্ট যাচাই করে ২৪ ঘণ্টার মধ্যে একাউন্ট একটিভ করে দিবে।</p>
+            <Link to="/dashboard" className="bg-gray-900 text-white px-8 py-3 rounded-2xl font-bold">ড্যাশবোর্ডে ফিরে যান</Link>
           </div>
         ) : (
           <>
@@ -481,14 +553,13 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
               </ol>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-4 mb-2">
               <button 
                 onClick={() => setMethod('bikash')}
                 className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center ${method === 'bikash' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-100'}`}
               >
                 <div className="w-12 h-12 bg-pink-500 rounded-xl mb-2 flex items-center justify-center text-white font-bold">b</div>
                 <span className="font-bold text-gray-900">Bikash</span>
-                <span className="text-xs text-gray-500">{settings?.bikashNumber || '01XXXXXXXXX'}</span>
               </button>
               <button 
                 onClick={() => setMethod('nagad')}
@@ -496,8 +567,29 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
               >
                 <div className="w-12 h-12 bg-orange-500 rounded-xl mb-2 flex items-center justify-center text-white font-bold">n</div>
                 <span className="font-bold text-gray-900">Nagad</span>
-                <span className="text-xs text-gray-500">{settings?.nagadNumber || '01XXXXXXXXX'}</span>
               </button>
+            </div>
+
+            <div className="mb-8">
+              <div 
+                onClick={() => copyToClipboard(method === 'bikash' ? settings?.bikashNumber || '' : settings?.nagadNumber || '')}
+                className="bg-gray-50 border-2 border-dashed border-gray-200 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-gray-100 transition-all group"
+              >
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">{method} Number</p>
+                  <p className="text-xl font-mono font-bold text-gray-900">
+                    {method === 'bikash' ? settings?.bikashNumber || '01XXXXXXXXX' : settings?.nagadNumber || '01XXXXXXXXX'}
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2 text-emerald-600">
+                  {copied ? (
+                    <span className="text-sm font-bold flex items-center"><CheckCircle className="w-4 h-4 mr-1" /> Copied!</span>
+                  ) : (
+                    <span className="text-sm font-bold opacity-0 group-hover:opacity-100 transition-all">Click to Copy</span>
+                  )}
+                  <CreditCard className="w-6 h-6" />
+                </div>
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -808,7 +900,7 @@ export default function App() {
         <Navbar user={user} profile={profile} />
         <main>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={user ? <Navigate to="/dashboard" /> : <LandingPage />} />
             <Route path="/auth" element={<AuthPage user={user} />} />
             <Route 
               path="/dashboard" 
@@ -819,7 +911,7 @@ export default function App() {
               element={user ? <ActivationPage profile={profile} /> : <Navigate to="/auth" />} 
             />
             <Route 
-              path="/admin" 
+              path="/adminpanel" 
               element={user && profile?.role === 'admin' ? <AdminDashboard profile={profile} /> : <Navigate to="/dashboard" />} 
             />
           </Routes>
