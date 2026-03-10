@@ -1,0 +1,5 @@
+{
+  "name": "MicroJob BD",
+  "description": "A micro job platform where users can earn money by completing small tasks. Features include account activation via payment, job listings, and an admin panel.",
+  "requestFramePermissions": []
+}

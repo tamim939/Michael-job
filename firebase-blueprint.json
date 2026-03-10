@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and account status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "isActive": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["none", "pending", "active", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "isActive", "status"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "Micro job listing",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "reward": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "description", "reward", "createdAt", "createdBy"]
+    },
+    "ActivationRequest": {
+      "title": "Activation Request",
+      "description": "Payment verification request for account activation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "method": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userEmail", "transactionId", "method", "status", "createdAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global app settings like payment numbers",
+      "type": "object",
+      "properties": {
+        "bikashNumber": { "type": "string" },
+        "nagadNumber": { "type": "string" },
+        "activationFee": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User documents"
+    },
+    "/jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Job listings"
+    },
+    "/activationRequests/{requestId}": {
+      "schema": "ActivationRequest",
+      "description": "Pending and processed activation requests"
+    },
+    "/settings/global": {
+      "schema": "Settings",
+      "description": "Global configuration"
+    }
+  }
+}

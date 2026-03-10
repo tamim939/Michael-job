@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, role, isActive, status, createdAt
+    //
+    // Collection: jobs
+    // Fields: title, description, reward, createdAt, createdBy
+    //
+    // Collection: activationRequests
+    // Fields: userId, userEmail, transactionId, method, status, createdAt
+    //
+    // Collection: settings
+    // Fields: bikashNumber, nagadNumber, activationFee
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "rsjonayed07@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'isActive', 'status']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'user'] &&
+             data.isActive is bool &&
+             data.status in ['none', 'pending', 'active', 'rejected'];
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['title', 'description', 'reward', 'createdAt', 'createdBy']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.description is string && data.description.size() > 0 &&
+             data.reward is number && data.reward >= 0 &&
+             data.createdBy is string;
+    }
+
+    function isValidActivationRequest(data) {
+      return data.keys().hasAll(['userId', 'userEmail', 'transactionId', 'method', 'status', 'createdAt']) &&
+             data.userId is string &&
+             data.userEmail is string &&
+             data.transactionId is string && data.transactionId.size() > 0 &&
+             data.method is string &&
+             data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      request.resource.data.role == 'user' && 
+                      request.resource.data.status == 'none';
+      allow update: if isAdmin() || (isOwner(userId) && 
+                      isValidUser(request.resource.data) && 
+                      request.resource.data.role == resource.data.role && 
+                      request.resource.data.status == resource.data.status);
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidJob(request.resource.data);
+    }
+
+    match /activationRequests/{requestId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                      isValidActivationRequest(request.resource.data) && 
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      allow update: if isAdmin() && isValidActivationRequest(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
