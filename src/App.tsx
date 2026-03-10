@@ -259,9 +259,10 @@ const AuthPage = ({ user }: { user: FirebaseUser | null }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (user) navigate('/dashboard');
-  }, [user, navigate]);
+  // Remove automatic redirect to allow handleAuth to control navigation
+  // useEffect(() => {
+  //   if (user) navigate('/dashboard');
+  // }, [user, navigate]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,6 +271,7 @@ const AuthPage = ({ user }: { user: FirebaseUser | null }) => {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
+        navigate('/dashboard');
       } else {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         const newUser = result.user;
@@ -283,6 +285,7 @@ const AuthPage = ({ user }: { user: FirebaseUser | null }) => {
           status: 'none',
           createdAt: serverTimestamp()
         });
+        navigate('/activate');
       }
     } catch (err: any) {
       console.error("Auth error:", err);
@@ -393,9 +396,15 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
   }, []);
 
   if (!profile) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
-      <p className="text-gray-600 font-medium text-center">আপনার প্রোফাইল তৈরি হচ্ছে, অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...</p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="animate-pulse space-y-8">
+        <div className="h-32 bg-gray-100 rounded-3xl w-full"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="h-40 bg-gray-100 rounded-3xl"></div>
+          <div className="h-40 bg-gray-100 rounded-3xl"></div>
+          <div className="h-40 bg-gray-100 rounded-3xl"></div>
+        </div>
+      </div>
     </div>
   );
 
@@ -475,7 +484,7 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
   );
 };
 
-const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
+const ActivationPage = ({ user, profile }: { user: FirebaseUser | null, profile: UserProfile | null }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [method, setMethod] = useState<'bikash' | 'nagad'>('bikash');
   const [transactionId, setTransactionId] = useState('');
@@ -500,20 +509,23 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile || !transactionId) return;
+    const uid = profile?.uid || user?.uid;
+    const email = profile?.email || user?.email;
+    
+    if (!uid || !email || !transactionId) return;
 
     setLoading(true);
     try {
       await addDoc(collection(db, 'activationRequests'), {
-        userId: profile.uid,
-        userEmail: profile.email,
+        userId: uid,
+        userEmail: email,
         transactionId,
         method,
         status: 'pending',
         createdAt: serverTimestamp()
       });
 
-      await updateDoc(doc(db, 'users', profile.uid), {
+      await updateDoc(doc(db, 'users', uid), {
         status: 'pending'
       });
 
@@ -525,13 +537,8 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
     }
   };
 
-  if (!profile) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
-      <p className="text-gray-600 font-medium text-center">আপনার প্রোফাইল তৈরি হচ্ছে, অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...</p>
-    </div>
-  );
-  if (profile.isActive) return <Navigate to="/dashboard" />;
+  if (!user) return <Navigate to="/auth" />;
+  if (profile?.isActive) return <Navigate to="/dashboard" />;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -874,19 +881,16 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Listen to profile changes
+        // Set loading to false immediately so the app can render
+        setLoading(false);
+        
+        // Listen to profile changes in the background
         const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
           if (snapshot.exists()) {
             setProfile(snapshot.data() as UserProfile);
-            setLoading(false);
-          } else {
-            // If user exists but profile doesn't yet (race condition during signup)
-            // We set a small timeout to stop loading and let the app handle it
-            setTimeout(() => setLoading(false), 2000);
           }
         }, (error) => {
           console.error("Profile error:", error);
-          setLoading(false);
         });
         return () => profileUnsub();
       } else {
@@ -926,7 +930,7 @@ export default function App() {
             />
             <Route 
               path="/activate" 
-              element={user ? <ActivationPage profile={profile} /> : <Navigate to="/auth" />} 
+              element={user ? <ActivationPage user={user} profile={profile} /> : <Navigate to="/auth" />} 
             />
             <Route 
               path="/adminpanel" 
