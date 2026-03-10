@@ -392,7 +392,11 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
     return () => unsubscribe();
   }, []);
 
-  if (!profile) return <div className="p-8 text-center">Loading profile...</div>;
+  if (!profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+    </div>
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -520,7 +524,11 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
     }
   };
 
-  if (!profile) return null;
+  if (!profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+    </div>
+  );
   if (profile.isActive) return <Navigate to="/dashboard" />;
 
   return (
@@ -861,20 +869,22 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setLoading(false); // Auth state resolved, stop full-page loading
       if (firebaseUser) {
+        setUser(firebaseUser);
         // Listen to profile changes
-        const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (doc) => {
-          if (doc.exists()) {
-            setProfile(doc.data() as UserProfile);
+        const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
+          if (snapshot.exists()) {
+            setProfile(snapshot.data() as UserProfile);
           }
+        }, (error) => {
+          console.error("Profile error:", error);
         });
-        setLoading(false);
         return () => profileUnsub();
       } else {
+        setUser(null);
         setProfile(null);
-        setLoading(false);
       }
     });
     return () => unsubscribe();
