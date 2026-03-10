@@ -391,6 +391,7 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'jobs');
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -440,9 +441,20 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
           <h2 className="text-3xl font-bold text-gray-900">Available Jobs</h2>
           <p className="text-gray-500">Find tasks that match your skills</p>
         </div>
-        <div className="bg-emerald-50 px-4 py-2 rounded-xl text-emerald-700 font-bold flex items-center">
-          <Wallet className="w-4 h-4 mr-2" />
-          <span>Balance: 0.00 BDT</span>
+        <div className="flex items-center space-x-4">
+          {profile.role === 'admin' && (
+            <Link 
+              to="/adminpanel" 
+              className="bg-gray-900 text-white px-4 py-2 rounded-xl font-bold flex items-center hover:bg-gray-800 transition-all"
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" />
+              <span>Admin Panel</span>
+            </Link>
+          )}
+          <div className="bg-emerald-50 px-4 py-2 rounded-xl text-emerald-700 font-bold flex items-center">
+            <Wallet className="w-4 h-4 mr-2" />
+            <span>Balance: 0.00 BDT</span>
+          </div>
         </div>
       </div>
 
@@ -652,14 +664,20 @@ const AdminDashboard = ({ profile }: { profile: UserProfile | null }) => {
 
     const unsubRequests = onSnapshot(query(collection(db, 'activationRequests'), orderBy('createdAt', 'desc')), (snap) => {
       setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as ActivationRequest)));
+    }, (error) => {
+      console.error("Requests error:", error);
     });
 
     const unsubJobs = onSnapshot(query(collection(db, 'jobs'), orderBy('createdAt', 'desc')), (snap) => {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
+    }, (error) => {
+      console.error("Jobs error:", error);
     });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (d) => {
       if (d.exists()) setSettings(d.data() as AppSettings);
+    }, (error) => {
+      console.error("Settings error:", error);
     });
 
     return () => {
@@ -887,7 +905,26 @@ export default function App() {
         // Listen to profile changes in the background
         const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
           if (snapshot.exists()) {
-            setProfile(snapshot.data() as UserProfile);
+            const data = snapshot.data() as UserProfile;
+            // Force admin role if email matches
+            if (firebaseUser.email === 'rsjonayed07@gmail.com' && data.role !== 'admin') {
+              updateDoc(doc(db, 'users', firebaseUser.uid), { role: 'admin' });
+              setProfile({ ...data, role: 'admin' });
+            } else {
+              setProfile(data);
+            }
+          } else if (firebaseUser.email === 'rsjonayed07@gmail.com') {
+            // Create admin profile if it doesn't exist
+            const adminProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              role: 'admin',
+              isActive: true,
+              status: 'active',
+              createdAt: serverTimestamp()
+            };
+            setDoc(doc(db, 'users', firebaseUser.uid), adminProfile);
+            setProfile(adminProfile);
           }
         }, (error) => {
           console.error("Profile error:", error);
@@ -899,7 +936,14 @@ export default function App() {
         setLoading(false);
       }
     });
-    return () => unsubscribe();
+
+    // Safety timeout: stop loading after 5 seconds regardless of Firebase state
+    const timeout = setTimeout(() => setLoading(false), 5000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (loading) {
