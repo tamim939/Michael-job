@@ -393,8 +393,9 @@ const Dashboard = ({ profile }: { profile: UserProfile | null }) => {
   }, []);
 
   if (!profile) return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
+      <p className="text-gray-600 font-medium text-center">আপনার প্রোফাইল তৈরি হচ্ছে, অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...</p>
     </div>
   );
 
@@ -525,8 +526,9 @@ const ActivationPage = ({ profile }: { profile: UserProfile | null }) => {
   };
 
   if (!profile) return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
+      <p className="text-gray-600 font-medium text-center">আপনার প্রোফাইল তৈরি হচ্ছে, অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...</p>
     </div>
   );
   if (profile.isActive) return <Navigate to="/dashboard" />;
@@ -870,21 +872,27 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setLoading(false); // Auth state resolved, stop full-page loading
       if (firebaseUser) {
         setUser(firebaseUser);
         // Listen to profile changes
         const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
           if (snapshot.exists()) {
             setProfile(snapshot.data() as UserProfile);
+            setLoading(false);
+          } else {
+            // If user exists but profile doesn't yet (race condition during signup)
+            // We set a small timeout to stop loading and let the app handle it
+            setTimeout(() => setLoading(false), 2000);
           }
         }, (error) => {
           console.error("Profile error:", error);
+          setLoading(false);
         });
         return () => profileUnsub();
       } else {
         setUser(null);
         setProfile(null);
+        setLoading(false);
       }
     });
     return () => unsubscribe();
