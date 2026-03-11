@@ -15,7 +15,10 @@ service cloud.firestore {
     // Fields: userId, userEmail, transactionId, method, status, createdAt
     //
     // Collection: settings
-    // Fields: bikashNumber, nagadNumber, activationFee
+    // Fields: bikashNumber, nagadNumber, activationFee, minWithdraw
+    //
+    // Collection: withdrawals
+    // Fields: userId, userEmail, amount, method, number, status, createdAt
     //
     // ===============================================================
 
@@ -33,16 +36,17 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "rsjonayed07@gmail.com" && request.auth.token.email_verified == true));
+         (request.auth.token.email in ["rsjonayed07@gmail.com", "tamimhh@gmail.com", "tamim@gmail", "tamimhht@gmail.com"] && request.auth.token.email_verified == true));
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role', 'isActive', 'status']) &&
+      return data.keys().hasAll(['uid', 'email', 'role', 'isActive', 'status', 'balance']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'user'] &&
              data.isActive is bool &&
-             data.status in ['none', 'pending', 'active', 'rejected'];
+             data.status in ['none', 'pending', 'active', 'rejected'] &&
+             data.balance is number;
     }
 
     function isValidJob(data) {
@@ -50,7 +54,9 @@ service cloud.firestore {
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.description is string && data.description.size() > 0 &&
              data.reward is number && data.reward >= 0 &&
-             data.createdBy is string;
+             data.createdBy is string &&
+             (!('link' in data) || data.link is string) &&
+             (!('imageUrl' in data) || data.imageUrl is string);
     }
 
     function isValidActivationRequest(data) {
@@ -59,6 +65,28 @@ service cloud.firestore {
              data.userEmail is string &&
              data.transactionId is string && data.transactionId.size() > 0 &&
              data.method is string &&
+             data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasAll(['jobId', 'jobTitle', 'userId', 'userEmail', 'proofText', 'proofImage', 'reward', 'status', 'createdAt']) &&
+             data.jobId is string &&
+             data.jobTitle is string &&
+             data.userId is string &&
+             data.userEmail is string &&
+             data.proofText is string && data.proofText.size() > 0 &&
+             data.proofImage is string && data.proofImage.size() > 0 &&
+             data.reward is number &&
+             data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    function isValidWithdrawal(data) {
+      return data.keys().hasAll(['userId', 'userEmail', 'amount', 'method', 'number', 'status', 'createdAt']) &&
+             data.userId is string &&
+             data.userEmail is string &&
+             data.amount is number && data.amount > 0 &&
+             data.method in ['bikash', 'nagad'] &&
+             data.number is string && data.number.size() >= 11 &&
              data.status in ['pending', 'approved', 'rejected'];
     }
 
@@ -71,11 +99,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isOwner(userId) && 
                       isValidUser(request.resource.data) && 
                       request.resource.data.role == 'user' && 
-                      request.resource.data.status == 'none';
+                      request.resource.data.status == 'none' &&
+                      request.resource.data.balance == 0;
       allow update: if isAdmin() || (isOwner(userId) && 
                       isValidUser(request.resource.data) && 
                       request.resource.data.role == resource.data.role && 
-                      request.resource.data.status == resource.data.status);
+                      request.resource.data.status == resource.data.status &&
+                      request.resource.data.balance == resource.data.balance);
     }
 
     match /jobs/{jobId} {
@@ -93,9 +123,29 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /submissions/{submissionId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                      isValidSubmission(request.resource.data) && 
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      allow update: if isAdmin() && isValidSubmission(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                      isValidWithdrawal(request.resource.data) && 
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      allow update: if isAdmin() && isValidWithdrawal(request.resource.data);
+      allow delete: if isAdmin();
     }
   }
 }
